@@ -198,7 +198,121 @@ esac
 - If the argument is invalid, the script displays an error message and the help message.
 
 ---
+##General Script
+```bash
+#!/bin/bash
 
+# Enable debugging if DEBUG environment variable is set
+if [[ "$DEBUG" == "true" ]]; then
+  set -x  # Enable debug mode
+fi
+
+# Function to display help message
+show_help() {
+  echo "Usage: $0 [OPTION]"
+  echo "Options:"
+  echo "  1       Check system date and write it to /tmp/system_date.txt"
+  echo "  2       Check installed packages, users, and groups, and store them in separate files"
+  echo "  3       Install and configure kubectl, helm, and terraform (latest versions)"
+  echo "  --help  Show this help message"
+  exit 1
+}
+
+# Function to handle errors
+handle_error() {
+  echo "Error: $1" >&2
+  exit 1
+}
+
+# Check if no arguments are provided
+if [[ $# -eq 0 ]]; then
+  show_help
+fi
+
+# Process arguments
+case $1 in
+  1)
+    # Argument 1: Write system date to /tmp/system_date.txt
+    echo "Checking system date..."
+    date > /tmp/system_date.txt || handle_error "Failed to write system date to file"
+    echo "System date written to /tmp/system_date.txt"
+    ;;
+  2)
+    # Argument 2: Check installed packages, users, and groups, and store them in separate files
+    echo "Checking installed packages, users, and groups..."
+    OUTPUT_DIR="/tmp/system_info"
+    mkdir -p "$OUTPUT_DIR" || handle_error "Failed to create directory $OUTPUT_DIR"
+
+    # Check installed packages
+    dpkg -l > "$OUTPUT_DIR/installed_packages.txt" || handle_error "Failed to list installed packages"
+
+    # Check users
+    cut -d: -f1 /etc/passwd > "$OUTPUT_DIR/users.txt" || handle_error "Failed to list users"
+
+    # Check groups
+    cut -d: -f1 /etc/group > "$OUTPUT_DIR/groups.txt" || handle_error "Failed to list groups"
+
+    echo "System information stored in $OUTPUT_DIR"
+    ;;
+  3)
+    # Argument 3: Install and configure kubectl, helm, and terraform
+    echo "Installing kubectl, helm, and terraform..."
+
+    # Install kubectl
+    echo "Installing kubectl..."
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" || handle_error "Failed to download kubectl"
+    chmod +x kubectl
+    sudo mv kubectl /usr/local/bin/ || handle_error "Failed to move kubectl to /usr/local/bin"
+
+    # Install helm
+    echo "Installing helm..."
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 || handle_error "Failed to download helm installer"
+    chmod +x get_helm.sh
+    ./get_helm.sh || handle_error "Failed to install helm"
+    rm get_helm.sh
+
+    # Install terraform
+    echo "Installing terraform..."
+    TERRAFORM_VERSION=$(curl -s https://api.github.com/repos/hashicorp/terraform/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')  # Remove 'v' from version
+    TERRAFORM_ZIP="terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+    TERRAFORM_URL="https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${TERRAFORM_ZIP}"
+
+    # Download Terraform
+    echo "Downloading Terraform ${TERRAFORM_VERSION}..."
+    curl -LO "$TERRAFORM_URL" || handle_error "Failed to download Terraform"
+
+    # Verify the downloaded file
+    if ! file "$TERRAFORM_ZIP" | grep -q "Zip archive data"; then
+      handle_error "Downloaded Terraform file is not a valid ZIP archive"
+    fi
+
+    # Unzip Terraform
+    echo "Unzipping Terraform..."
+    unzip "$TERRAFORM_ZIP" || handle_error "Failed to unzip Terraform"
+    sudo mv terraform /usr/local/bin/ || handle_error "Failed to move Terraform to /usr/local/bin"
+    rm "$TERRAFORM_ZIP"
+
+    # Display versions and store in a file
+    echo "Versions installed:"
+    echo "kubectl: $(kubectl version --client --output=json | jq -r '.clientVersion.gitVersion')"
+    echo "helm: $(helm version --short)"
+    echo "terraform: $(terraform version | head -n 1)"
+
+    echo "kubectl: $(kubectl version --client --output=json | jq -r '.clientVersion.gitVersion')" > /tmp/versions.txt
+    echo "helm: $(helm version --short)" >> /tmp/versions.txt
+    echo "terraform: $(terraform version | head -n 1)" >> /tmp/versions.txt
+
+    echo "Installation complete. Version information stored in /tmp/versions.txt"
+    ;;
+  --help)
+    show_help
+    ;;
+  *)
+    echo "Invalid option: $1"
+    show_help
+    ;;
+esac
+```
 ## **How to Use the Script**
 
 1. Save the script to a file, e.g., `system_script.sh`.
